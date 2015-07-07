@@ -87,6 +87,7 @@ typedef int jscp_bool_t;
 #define JSCP_E_SYNTAX_OBJECT_COLON_NOT_FOUND		-8
 #define JSCP_E_SYNTAX_OBJECT_COMMA_NOT_FOUND		-9
 #define JSCP_E_SYNTAX								-10
+#define JSCP_E_TOO_LONG_TEXT						-11
 
 int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_mem_len, jscp_doc_t *doc);
 

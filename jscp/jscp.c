@@ -115,6 +115,9 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 	jscp_union_node_t *parent_node = 0;
 	jscp_union_node_t *prev_node = 0;
 
+	if (text_len > UINT16_MAX)
+		return JSCP_E_TOO_LONG_TEXT;
+
 	doc->text = text;
 	doc->text_len = text_len;
 	doc->node_mem = node_mem;
