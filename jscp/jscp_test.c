@@ -7,7 +7,9 @@ void jscp_dump_node(jscp_doc_t *doc, jscp_node_t *node, int nest)
 {
 	int i;
 	jscp_node_t *cn;
+
 	for (i = 0; i < nest; i++) printf("  ");
+
 	switch (jscp_get_type(node)) {
 	case JSCP_TYPE_STR:
 		printf("\"%s\"", jscp_get_str_val(doc, node));
@@ -35,18 +37,18 @@ void jscp_dump_node(jscp_doc_t *doc, jscp_node_t *node, int nest)
 		break;
 	case JSCP_TYPE_OBJECT:
 		cn = jscp_get_child_head(doc, node);
-		printf("[\n");
+		printf("{\n");
 		for (i = 0; i < jscp_get_object_len(node); i++){
 			if (i > 0) printf(",\n");
 			jscp_dump_node(doc, cn, nest + 1);
 			cn = jscp_get_next(doc, cn);
-			printf(":");
-			jscp_dump_node(doc, cn, 0);
+			printf(":\n");
+			jscp_dump_node(doc, cn, nest + 1);
 			cn = jscp_get_next(doc, cn);
 		}
 		printf("\n");
 		for (i = 0; i < nest; i++) printf("  ");
-		printf("]");
+		printf("}");
 		break;
 	}
 }
@@ -54,17 +56,23 @@ void jscp_dump_node(jscp_doc_t *doc, jscp_node_t *node, int nest)
 void jscp_dump(jscp_doc_t *doc)
 {
 	jscp_dump_node(doc, jscp_get_root(doc), 0);
+	printf("\n");
 }
 
 int main(void)
 {
 	char msg[] = "[[456,128],33,true,false, null, {\"test\":567, \"tt\":{\"test5\":567},\"test3\":1567}]";
-	int i;
+	int r;
 	jscp_doc_t doc;
 	jscp_union_node_t nodes[256];
-	jscp_parse(msg, strlen(msg), nodes, 256, &doc);
+	r = jscp_parse(msg, strlen(msg), nodes, 256, &doc);
 
-	jscp_dump(&doc);
+	if (r >= 0) {
+		jscp_dump(&doc);
+	}
+	else {
+		printf("err=%d\n", r);
+	}
 
 	return 0;
 }

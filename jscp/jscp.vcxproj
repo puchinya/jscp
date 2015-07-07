@@ -70,6 +70,9 @@
     <ClCompile Include="jscp.c" />
     <ClCompile Include="jscp_test.c" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="LICENSE.txt" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

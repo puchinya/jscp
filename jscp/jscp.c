@@ -52,8 +52,10 @@ static void jscp_unget_ch(jscp_substr_t *ss)
 	ss->len++;
 }
 
-#define JSCP_TYPEMASK_PARSING		0x10
-#define JSCP_TYPEMASK_PARSING_KEY	0x20
+#define JSCP_PARSE_STAGE_OBJECT_COLON	0x10
+#define JSCP_PARSE_STAGE_OBJECT_VALUE	0x20
+#define JSCP_PARSE_STAGE_OBJECT_COMMA	0x80
+#define JSCP_PARSE_STAGE_ARRAY_COMMA	0x80
 
 static jscp_union_node_t *jscp_up_parent(jscp_doc_t *doc)
 {
@@ -131,9 +133,6 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 		
 		switch (ch)
 		{
-		case '\0':
-			goto last;
-			break;
 		case '[':
 			{
 				new_node = jscp_new_node(doc);
@@ -141,7 +140,7 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 					error_code = JSCP_E_NOMEM;
 					goto error;
 				}
-				new_node->a.type = JSCP_TYPE_ARRAY | JSCP_TYPEMASK_PARSING;
+				new_node->a.type = JSCP_TYPE_ARRAY;
 				new_node->a.next_node_idx = JSCP_INVALID_IDX;
 				new_node->a.len = 0;
 				new_node->a.child_node_idx = JSCP_INVALID_IDX;
@@ -154,34 +153,48 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 					error_code = JSCP_E_NOMEM;
 					goto error;
 				}
-				new_node->a.type = JSCP_TYPE_OBJECT | JSCP_TYPEMASK_PARSING;
+				new_node->a.type = JSCP_TYPE_OBJECT;
 				new_node->a.next_node_idx = JSCP_INVALID_IDX;
 				new_node->a.len = 0;
 				new_node->a.child_node_idx = JSCP_INVALID_IDX;
 			}
 			break;
 		case ']':
-			if (!parent_node) {
+			if (parent_node &&
+				(parent_node->n.type == JSCP_TYPE_ARRAY ||
+				parent_node->n.type == (JSCP_TYPE_ARRAY | JSCP_PARSE_STAGE_ARRAY_COMMA)))
+			{
+				parent_node->a.type = JSCP_TYPE_ARRAY;
+				parent_node = jscp_up_parent(doc);
+				if (parent_node)
+					prev_node = jscp_last_node(doc, parent_node);
+			}
+			else {
 				error_code = JSCP_E_SYNTAX_UNMATCH_ARRAY_BRACKET;
 				goto error;
 			}
-			parent_node->a.type = JSCP_TYPE_ARRAY;
-			parent_node = jscp_up_parent(doc);
-			if (parent_node)
-				prev_node = jscp_last_node(doc, parent_node);
 			break;
 		case '}':
-			if (!parent_node) {
+			if (parent_node &&
+				(parent_node->n.type == JSCP_TYPE_OBJECT ||
+				parent_node->n.type == (JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_COMMA)))
+			{
+				parent_node->a.type = JSCP_TYPE_OBJECT;
+				parent_node = jscp_up_parent(doc);
+				if (parent_node)
+					prev_node = jscp_last_node(doc, parent_node);
+			}
+			else {
 				error_code = JSCP_E_SYNTAX_UNMATCH_OBJECT_BRACKET;
 				goto error;
 			}
-			parent_node->a.type = JSCP_TYPE_OBJECT;
-			parent_node = jscp_up_parent(doc);
-			if (parent_node)
-				prev_node = jscp_last_node(doc, parent_node);
 			break;
 		case ',':
-			if (!parent_node) {
+			if (parent_node &&
+				(parent_node->n.type & 0xF0) == JSCP_PARSE_STAGE_OBJECT_COMMA)
+			{
+				parent_node->n.type &= 0x0F;
+			} else {
 				error_code = JSCP_E_SYNTAX;
 				goto error;
 			}
@@ -191,6 +204,14 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 				error_code = JSCP_E_SYNTAX;
 				goto error;
 			}
+
+			if (parent_node->n.type != (JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_COLON)) {
+				error_code = JSCP_E_SYNTAX;
+				goto error;
+			}
+
+			parent_node->n.type = JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_VALUE;
+
 			break;
 		case 't':
 			{
@@ -247,25 +268,25 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 			break;
 		case 'n':
 			{
-					ch = jscp_read_ch(&ss);
-					if (ch < 0 || ch != 'u') {
-						error_code = JSCP_E_SYNTAX;
-						goto error;
-					}
-					ch = jscp_read_ch(&ss);
-					if (ch < 0 || ch != 'l') {
-						error_code = JSCP_E_SYNTAX;
-						goto error;
-					}
-					ch = jscp_read_ch(&ss);
-					if (ch < 0 || ch != 'l') {
-						error_code = JSCP_E_SYNTAX;
-						goto error;
-					}
+				ch = jscp_read_ch(&ss);
+				if (ch < 0 || ch != 'u') {
+					error_code = JSCP_E_SYNTAX;
+					goto error;
+				}
+				ch = jscp_read_ch(&ss);
+				if (ch < 0 || ch != 'l') {
+					error_code = JSCP_E_SYNTAX;
+					goto error;
+				}
+				ch = jscp_read_ch(&ss);
+				if (ch < 0 || ch != 'l') {
+					error_code = JSCP_E_SYNTAX;
+					goto error;
+				}
 
-					new_node = jscp_new_node(doc);
-					new_node->n.type = JSCP_TYPE_NULL;
-					new_node->n.next_node_idx = JSCP_INVALID_IDX;
+				new_node = jscp_new_node(doc);
+				new_node->n.type = JSCP_TYPE_NULL;
+				new_node->n.next_node_idx = JSCP_INVALID_IDX;
 			}
 			break;
 		case '-':
@@ -334,7 +355,7 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 					}
 				}
 
-				text_end = ss.s;
+				text_end = ss.s - 1;
 
 				new_node = jscp_new_node(doc);
 				new_node->s.type = JSCP_TYPE_STR;
@@ -349,19 +370,51 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 
 		if (new_node) {
 			if (parent_node) {
-				int type = parent_node->n.type & 0xF;
-				if (type == JSCP_TYPE_ARRAY || type == JSCP_TYPE_OBJECT) {
-					parent_node->a.len++;
-					if (parent_node->a.child_node_idx == JSCP_INVALID_IDX) {
-						parent_node->a.child_node_idx = doc->node_mem_pos - 1;
-						prev_node = new_node;
+				int org_type = parent_node->n.type;
+				int type = org_type & 0xF;
+
+				if (type == JSCP_TYPE_OBJECT) {
+					if (org_type == JSCP_TYPE_OBJECT) {
+						/* Type of object key is string */
+						if (new_node->n.type != JSCP_TYPE_STR) {
+							error_code = JSCP_E_SYNTAX_OBJECT_KEY_NOT_STRING;
+							goto error;
+						}
+						parent_node->n.type = JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_COLON;
+					}
+					else if (org_type == (JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_COLON)) {
+						error_code = JSCP_E_SYNTAX_OBJECT_COLON_NOT_FOUND;
+						goto error;
+					}
+					else if (org_type == (JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_COMMA)) {
+						error_code = JSCP_E_SYNTAX_OBJECT_COMMA_NOT_FOUND;
+						goto error;
 					}
 					else {
-						prev_node->n.next_node_idx = doc->node_mem_pos - 1;
-						prev_node = new_node;
+						parent_node->n.type = JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_COMMA;
 					}
 				}
+				else if (type == JSCP_TYPE_ARRAY) {
+					if (org_type == JSCP_TYPE_ARRAY) {
+						parent_node->n.type = JSCP_TYPE_ARRAY | JSCP_PARSE_STAGE_ARRAY_COMMA;
+					}
+					else if (org_type == (JSCP_TYPE_ARRAY | JSCP_PARSE_STAGE_ARRAY_COMMA)) {
+						error_code = JSCP_E_SYNTAX_ARRAY_COMMA_NOT_FOUND;
+						goto error;
+					}
+				}
+
+				parent_node->a.len++;
+				if (parent_node->a.child_node_idx == JSCP_INVALID_IDX) {
+					parent_node->a.child_node_idx = doc->node_mem_pos - 1;
+					prev_node = new_node;
+				}
+				else {
+					prev_node->n.next_node_idx = doc->node_mem_pos - 1;
+					prev_node = new_node;
+				}
 			}
+			
 			{
 				int type = new_node->n.type & 0xF;
 				if (type == JSCP_TYPE_ARRAY || type == JSCP_TYPE_OBJECT) {
@@ -369,14 +422,15 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 					prev_node = 0;
 				}
 			}
+
 			if (!doc->root_node) {
 				doc->root_node = (jscp_node_t *)new_node;
 			}
 		}
 	}
-last:
 
 	return 0;
 error:
-	return -1;
+
+	return error_code;
 }
