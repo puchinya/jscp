@@ -3,12 +3,18 @@
 #include <string.h>
 #include <stdio.h>
 
-void jscp_dump_node(jscp_doc_t *doc, jscp_node_t *node, int nest)
+static void jscp_dump_spaces(int cnt)
+{
+	int i;
+	for (i = 0; i < cnt; i++) printf("  ");
+}
+
+static void jscp_dump_node(jscp_doc_t *doc, jscp_node_t *node, int first_spaces, int nest)
 {
 	int i;
 	jscp_node_t *cn;
 
-	for (i = 0; i < nest; i++) printf("  ");
+	if (first_spaces) jscp_dump_spaces(nest);
 
 	switch (jscp_type(node)) {
 	case JSCP_TYPE_STR:
@@ -28,11 +34,11 @@ void jscp_dump_node(jscp_doc_t *doc, jscp_node_t *node, int nest)
 		for (i = 0, cn = jscp_child_head(doc, node); cn; cn = jscp_array_next(doc, cn))
 		{
 			if (i > 0) printf(",\n");
-			jscp_dump_node(doc, cn, nest + 1);
+			jscp_dump_node(doc, cn, 1, nest + 1);
 			i++;
 		}
 		printf("\n");
-		for (i = 0; i < nest; i++) printf("  ");
+		jscp_dump_spaces(nest);
 		printf("]");
 		break;
 	case JSCP_TYPE_OBJECT:
@@ -40,13 +46,15 @@ void jscp_dump_node(jscp_doc_t *doc, jscp_node_t *node, int nest)
 		for (i = 0, cn = jscp_child_head(doc, node); cn; cn = jscp_object_next(doc, cn))
 		{
 			if (i > 0) printf(",\n");
-			jscp_dump_node(doc, cn, nest + 1);
-			printf(":\n");
-			jscp_dump_node(doc, jscp_object_val(doc, cn), nest + 1);
+			
+			jscp_dump_spaces(nest + 1);
+			printf("\"%.*s\":", jscp_str_len(cn), jscp_str_val(doc, cn));
+			
+			jscp_dump_node(doc, jscp_object_val(doc, cn), 0, nest + 1);
 			i++;
 		}
 		printf("\n");
-		for (i = 0; i < nest; i++) printf("  ");
+		jscp_dump_spaces(nest);
 		printf("}");
 		break;
 	}
@@ -54,7 +62,7 @@ void jscp_dump_node(jscp_doc_t *doc, jscp_node_t *node, int nest)
 
 void jscp_dump(jscp_doc_t *doc)
 {
-	jscp_dump_node(doc, jscp_root(doc), 0);
+	jscp_dump_node(doc, jscp_root(doc), 1, 0);
 	printf("\n");
 }
 
