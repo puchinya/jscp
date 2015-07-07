@@ -90,47 +90,66 @@ typedef int jscp_bool_t;
 
 int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_mem_len, jscp_doc_t *doc);
 
-static jscp_node_t *jscp_get_root(jscp_doc_t *doc) {
+static jscp_node_t *jscp_root(jscp_doc_t *doc) {
 	return doc->root_node;
 }
-static int jscp_get_type(jscp_node_t *node) { return node->type; }
 
-static jscp_node_t *jscp_get_child_head(jscp_doc_t *doc, jscp_node_t *node)
+static int jscp_type(jscp_node_t *node) { return node->type; }
+
+static jscp_node_t *jscp_child_head(jscp_doc_t *doc, jscp_node_t *node)
 {
-	return (jscp_node_t *)&doc->node_mem[((jscp_array_node_t *)node)->child_node_idx];
+	int i = ((jscp_array_node_t *)node)->child_node_idx;
+	if (i < 0) return 0;
+	return (jscp_node_t *)&doc->node_mem[i];
 }
 
-static jscp_node_t *jscp_get_next(jscp_doc_t *doc, jscp_node_t *node)
-{
-	return (jscp_node_t *)&doc->node_mem[node->next_node_idx];
-}
-
-static int32_t jscp_get_int_val(jscp_node_t *node)
+static int32_t jscp_int_val(jscp_node_t *node)
 {
 	return ((jscp_int_node_t *)node)->value;
 }
 
-static const char *jscp_get_str_val(jscp_doc_t *doc, jscp_node_t *node)
+static const char *jscp_str_val(jscp_doc_t *doc, jscp_node_t *node)
 {
 	return doc->text + ((jscp_str_node_t *)node)->text_idx;
 }
 
-static int jscp_get_str_len(jscp_node_t *node)
+static int jscp_str_len(jscp_node_t *node)
 {
 	return ((jscp_str_node_t *)node)->text_len;
 }
 
-static jscp_bool_t jscp_get_bool_val(jscp_node_t *node)
+static jscp_bool_t jscp_bool_val(jscp_node_t *node)
 {
 	return ((jscp_bool_node_t *)node)->value;
 }
 
-static int jscp_get_array_len(jscp_node_t *node) {
+static int jscp_array_len(jscp_node_t *node) {
 	return ((jscp_array_node_t *)node)->len;
 }
 
-static int jscp_get_object_len(jscp_node_t *node) {
+static jscp_node_t *jscp_array_next(jscp_doc_t *doc, jscp_node_t *node)
+{
+	int i = node->next_node_idx;
+	if (i < 0) return 0;
+	return (jscp_node_t *)&doc->node_mem[i];
+}
+
+static int jscp_object_len(jscp_node_t *node) {
 	return ((jscp_object_node_t *)node)->len >> 1;
+}
+
+static jscp_node_t *jscp_object_val(jscp_doc_t *doc, jscp_node_t *node)
+{
+	return (jscp_node_t *)&doc->node_mem[node->next_node_idx];
+}
+
+static jscp_node_t *jscp_object_next(jscp_doc_t *doc, jscp_node_t *node)
+{
+	int i;
+	node = (jscp_node_t *)&doc->node_mem[node->next_node_idx];
+	i = node->next_node_idx;
+	if (i < 0) return 0;
+	return (jscp_node_t *)&doc->node_mem[i];
 }
 
 #ifdef __cplusplus

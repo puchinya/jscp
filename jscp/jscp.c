@@ -52,9 +52,11 @@ static void jscp_unget_ch(jscp_substr_t *ss)
 	ss->len++;
 }
 
-#define JSCP_PARSE_STAGE_OBJECT_COLON	0x10
-#define JSCP_PARSE_STAGE_OBJECT_VALUE	0x20
+#define JSCP_PARSE_STAGE_OBJECT_KEY		0x10
+#define JSCP_PARSE_STAGE_OBJECT_COLON	0x20
+#define JSCP_PARSE_STAGE_OBJECT_VALUE	0x30
 #define JSCP_PARSE_STAGE_OBJECT_COMMA	0x80
+#define JSCP_PARSE_STAGE_ARRAY_VALUE	0x10
 #define JSCP_PARSE_STAGE_ARRAY_COMMA	0x80
 
 static jscp_union_node_t *jscp_up_parent(jscp_doc_t *doc)
@@ -140,7 +142,7 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 					error_code = JSCP_E_NOMEM;
 					goto error;
 				}
-				new_node->a.type = JSCP_TYPE_ARRAY;
+				new_node->a.type = JSCP_TYPE_ARRAY | JSCP_PARSE_STAGE_ARRAY_VALUE;
 				new_node->a.next_node_idx = JSCP_INVALID_IDX;
 				new_node->a.len = 0;
 				new_node->a.child_node_idx = JSCP_INVALID_IDX;
@@ -153,15 +155,15 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 					error_code = JSCP_E_NOMEM;
 					goto error;
 				}
-				new_node->a.type = JSCP_TYPE_OBJECT;
-				new_node->a.next_node_idx = JSCP_INVALID_IDX;
-				new_node->a.len = 0;
-				new_node->a.child_node_idx = JSCP_INVALID_IDX;
+				new_node->o.type = JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_KEY;
+				new_node->o.next_node_idx = JSCP_INVALID_IDX;
+				new_node->o.len = 0;
+				new_node->o.child_node_idx = JSCP_INVALID_IDX;
 			}
 			break;
 		case ']':
 			if (parent_node &&
-				(parent_node->n.type == JSCP_TYPE_ARRAY ||
+				(parent_node->n.type == (JSCP_TYPE_ARRAY | JSCP_PARSE_STAGE_ARRAY_VALUE) ||
 				parent_node->n.type == (JSCP_TYPE_ARRAY | JSCP_PARSE_STAGE_ARRAY_COMMA)))
 			{
 				parent_node->a.type = JSCP_TYPE_ARRAY;
@@ -176,7 +178,7 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 			break;
 		case '}':
 			if (parent_node &&
-				(parent_node->n.type == JSCP_TYPE_OBJECT ||
+				(parent_node->n.type == (JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_KEY) ||
 				parent_node->n.type == (JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_COMMA)))
 			{
 				parent_node->a.type = JSCP_TYPE_OBJECT;
@@ -193,7 +195,7 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 			if (parent_node &&
 				(parent_node->n.type & 0xF0) == JSCP_PARSE_STAGE_OBJECT_COMMA)
 			{
-				parent_node->n.type &= 0x0F;
+				parent_node->n.type = (parent_node->n.type & 0x0F) | 0x10;
 			} else {
 				error_code = JSCP_E_SYNTAX;
 				goto error;
@@ -290,6 +292,7 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 			}
 			break;
 		case '-':
+		case '0':
 		case '1':
 		case '2':
 		case '3':
@@ -365,7 +368,8 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 			}
 			break;
 		default:
-			break;
+			error_code = JSCP_E_SYNTAX;
+			goto error;
 		}
 
 		if (new_node) {
@@ -374,7 +378,7 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 				int type = org_type & 0xF;
 
 				if (type == JSCP_TYPE_OBJECT) {
-					if (org_type == JSCP_TYPE_OBJECT) {
+					if (org_type == (JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_KEY)) {
 						/* Type of object key is string */
 						if (new_node->n.type != JSCP_TYPE_STR) {
 							error_code = JSCP_E_SYNTAX_OBJECT_KEY_NOT_STRING;
@@ -390,15 +394,15 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 						error_code = JSCP_E_SYNTAX_OBJECT_COMMA_NOT_FOUND;
 						goto error;
 					}
-					else {
+					else { /* (JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_KEY) */
 						parent_node->n.type = JSCP_TYPE_OBJECT | JSCP_PARSE_STAGE_OBJECT_COMMA;
 					}
 				}
 				else if (type == JSCP_TYPE_ARRAY) {
-					if (org_type == JSCP_TYPE_ARRAY) {
+					if (org_type == (JSCP_TYPE_ARRAY | JSCP_PARSE_STAGE_ARRAY_VALUE)) {
 						parent_node->n.type = JSCP_TYPE_ARRAY | JSCP_PARSE_STAGE_ARRAY_COMMA;
 					}
-					else if (org_type == (JSCP_TYPE_ARRAY | JSCP_PARSE_STAGE_ARRAY_COMMA)) {
+					else { /* (JSCP_TYPE_ARRAY | JSCP_PARSE_STAGE_ARRAY_COMMA) */
 						error_code = JSCP_E_SYNTAX_ARRAY_COMMA_NOT_FOUND;
 						goto error;
 					}
@@ -427,6 +431,11 @@ int jscp_parse(char *text, int text_len, jscp_union_node_t *node_mem, int node_m
 				doc->root_node = (jscp_node_t *)new_node;
 			}
 		}
+	}
+
+	if (parent_node) {
+		error_code = JSCP_E_SYNTAX;
+		goto error;
 	}
 
 	return 0;
